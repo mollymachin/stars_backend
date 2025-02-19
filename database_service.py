@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -8,10 +10,11 @@ from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
+
 ##############################################################################
 # 1) Database Setup (SQLite + SQLAlchemy)
 ##############################################################################
-DB_URL = "sqlite:///./stars.db"  # local file named "stars.db"
+DB_URL = os.getenv("DATABASE_URL", "sqlite:///./stars.db")
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
