@@ -87,24 +87,56 @@ def get_stars(db: Session = Depends(get_db)):
 @app.post("/stars")
 def add_star(star: Star, db: Session = Depends(get_db)):
     """
-    Add a new star to the DB. Then push an SSE event.
+    Add a new star to the DB. Then push an SSE event with minimal info.
     """
     new_star = StarDB(x=star.x, y=star.y, message=star.message)
     db.add(new_star)
     db.commit()
     db.refresh(new_star)
     
-    # Push SSE event
+    # Push SSE event with only minimal data (no message)
     star_event_queue.put_nowait({
         "event": "add",
         "star": {
             "id": new_star.id,
             "x": new_star.x,
-            "y": new_star.y,
-            "message": new_star.message
+            "y": new_star.y
         }
     })
     return {"id": new_star.id, "x": new_star.x, "y": new_star.y, "message": new_star.message}
+
+
+@app.get("/stars/stream")
+async def stream_stars(request: Request):
+    """
+    SSE endpoint that emits star add/remove events.
+    If no event occurs within 15 seconds, send a keep-alive comment.
+    """
+    async def event_generator():
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                event = await asyncio.wait_for(star_event_queue.get(), timeout=15.0)
+                # We'll yield the event as a Python dict string. 
+                yield f"data: {event}\n\n"
+            except asyncio.TimeoutError:
+                # Keep-alive
+                yield ": keep-alive\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/stars/{star_id}")
+def get_star(star_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve full star details (including message) for a given star ID.
+    """
+    star = db.query(StarDB).filter(StarDB.id == star_id).first()
+    if not star:
+        raise HTTPException(status_code=404, detail="Star not found")
+    return {"id": star.id, "x": star.x, "y": star.y, "message": star.message}
+
 
 
 @app.delete("/stars/{star_id}")
@@ -154,25 +186,6 @@ def remove_all_stars(db: Session = Depends(get_db)):
     return {"message": "All stars removed"}
 
 
-@app.get("/stars/stream")
-async def stream_stars(request: Request):
-    """
-    SSE endpoint that emits star add/remove events.
-    If no event occurs within 15 seconds, send a keep-alive comment.
-    """
-    async def event_generator():
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                event = await asyncio.wait_for(star_event_queue.get(), timeout=15.0)
-                # We'll yield the event as a Python dict string. 
-                yield f"data: {event}\n\n"
-            except asyncio.TimeoutError:
-                # Keep-alive
-                yield ": keep-alive\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 ##############################################################################
