@@ -3,6 +3,9 @@
 
 [Central Repo](https://github.com/mollymachin/astro-app)
 
+Run:
+- `uvicorn database_service:app --host 127.0.0.1 --port 5000 --reload`
+
 Use Alembic for database change management.
 
 Libraries: SQLAlchemy is a basic select read update library.
