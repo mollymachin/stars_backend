@@ -18,3 +18,8 @@ EXPOSE 8080
 
 # Run the application
 CMD ["uvicorn", "database_service:app", "--host", "0.0.0.0", "--port", "8080"]
+
+# Add metadata
+LABEL org.opencontainers.image.source=https://github.com/hillcallum/stars_backend
+LABEL org.opencontainers.image.description="Star Map Backend Service"
+LABEL org.opencontainers.image.licenses=MIT
