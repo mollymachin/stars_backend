@@ -12,14 +12,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from fastapi_cache.decorator import cache
+from fastapi.openapi.docs import get_swagger_ui_html
 from redis import asyncio as aioredis
 from pydantic import BaseModel
 from azure.data.tables import TableServiceClient
 from azure.core.exceptions import ResourceExistsError
 from opencensus.ext.azure import metrics_exporter
 from opencensus.stats import stats as stats_module
+from sqlalchemy import create_engine, Column, Integer, Float, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import ResourceNotFoundError
+from dotenv import load_dotenv
 from datetime import datetime, UTC
 from typing import Optional
+
+load_dotenv()
 
 # Keep SQLAlchemy for reference, but we're using Azure Table Storage
 # from sqlalchemy import create_engine, Column, Integer, Float, String
@@ -60,39 +68,13 @@ table_service_client = TableServiceClient.from_connection_string(connection_stri
 tables = {}
 for table_name in ["Users", "Stars", "UserStars"]:
     try:
-        tables[table_name] = table_service.create_table(table_name)
+        tables[table_name] = table_service_client.create_table_client(table_name)
     except ResourceExistsError:
-        tables[table_name] = table_service.get_table_client(table_name)
+        tables[table_name] = table_service_client.get_table_client(table_name)
+
 
 ##############################################################################
-# 3) Redis Cache Configuration
-##############################################################################
-
-CACHE_TTL_SECONDS = 300 # Regular cache TTL
-POPULAR_CACHE_TTL_SECONDS = 3600 # Longer TTL for popular items
-POPULARITY_THRESHOLD = 50 # Minimum likes to be considered "popular"
-POPULARITY_WINDOW_SECONDS = 3600 # Time window for popularity calculation
-
-@app.on_event("startup")
-async def startup():
-    # Add this to your existing startup function
-    redis_host = os.getenv("REDIS_HOST")
-    redis_password = os.getenv("REDIS_PASSWORD")
-    redis_url = f"redis://{redis_host}:6379"
-    
-    redis = aioredis.from_url(
-        redis_url,
-        password=redis_password,
-        encoding="utf8",
-        decode_responses=True
-    )
-    FastAPICache.init(
-        backend=RedisBackend(redis),
-        prefix="starmap-cache"
-    )
-
-##############################################################################
-# 4) Pydantic Models
+# 3) Pydantic Models
 ##############################################################################
 
 class Star(BaseModel):
@@ -110,14 +92,14 @@ class User(BaseModel):
     created_at: Optional[datetime] = None
 
 ##############################################################################
-# 5) SSE Event Queue
+# 4) SSE Event Queue
 ##############################################################################
 
 star_event_queue = asyncio.Queue()
 user_event_queue = asyncio.Queue()
 
 ##############################################################################
-# 6) FastAPI App with Azure Table Storage
+# 5) FastAPI App with Azure Table Storage
 ##############################################################################
 
 app = FastAPI()
@@ -148,7 +130,7 @@ async def add_star(star: Star):
         "LastLiked": current_time,
         "CreatedAt": current_time
     }
-    stars_table.create_entity(star_entity)
+    tables["Stars"].create_entity(star_entity)
 
     # Push SSE event 
     await star_event_queue.put({
@@ -163,6 +145,33 @@ async def add_star(star: Star):
         }
     })
     return star_entity
+
+##############################################################################
+# 6) Redis Cache Configuration
+##############################################################################
+
+CACHE_TTL_SECONDS = 300 # Regular cache TTL
+POPULAR_CACHE_TTL_SECONDS = 3600 # Longer TTL for popular items
+POPULARITY_THRESHOLD = 50 # Minimum likes to be considered "popular"
+POPULARITY_WINDOW_SECONDS = 3600 # Time window for popularity calculation
+
+@app.on_event("startup")
+async def startup():
+    # Add this to your existing startup function
+    redis_host = os.getenv("REDIS_HOST")
+    redis_password = os.getenv("REDIS_PASSWORD")
+    redis_url = f"redis://{redis_host}:6379"
+    
+    redis = aioredis.from_url(
+        redis_url,
+        password=redis_password,
+        encoding="utf8",
+        decode_responses=True
+    )
+    FastAPICache.init(
+        backend=RedisBackend(redis),
+        prefix="starmap-cache"
+    )
 
 ##############################################################################
 # 7) CRUD + SSE Endpoints
@@ -345,8 +354,8 @@ async def remove_all_stars():
     "Remove all stars and push an SSE event (NB!!! Dangerous! Only for admins)"
     # TODO: Add admin authentication
     stars = tables["Stars"].query_entities(query_filter="PartitionKey eq 'STAR'")
-    for star in stars:
-        tables[]
+    for star in tables["Stars"].query_entities(query_filter="PartitionKey eq 'STAR'"):
+        tables["Stars"].delete_entity(partition_key="STAR", row_key=star["RowKey"])
 
     # Push SSE event
     await star_event_queue.put({
@@ -377,12 +386,25 @@ async def stream_stars(request: Request):
 @app.get("/stars/active")
 @cache(expire=300)
 async def get_active_stars():
-    """
-    Get all stars that have been liked recently.
-    """
-    stars = tables["Stars"].query_entities(
-        
-    )
+    """Get all stars that have been liked recently."""
+    current_time = datetime.now(UTC).timestamp()
+    cutoff_time = current_time - POPULARITY_WINDOW_SECONDS  # Only include stars liked in the last hour
+
+    # Query Azure Table Storage for stars
+    query_filter = f"LastLiked ge {cutoff_time}"
+    stars = tables["Stars"].query_entities(query_filter=query_filter)
+
+    return [
+        {
+            "id": star["RowKey"],
+            "x": star["X"],
+            "y": star["Y"],
+            "message": star["Message"],
+            "brightness": calculate_current_brightness(star["Brightness"], star["LastLiked"]),
+            "last_liked": star["LastLiked"]
+        }
+        for star in stars
+    ]
 
 ##############################################################################
 # 8) Azure Monitor Metrics
@@ -391,19 +413,25 @@ async def get_active_stars():
 exporter = metrics_exporter.new_metrics_exporter()
 stats_recorder = stats_module.stats_recorder
 
+# Add performance monitoring
 @app.middleware("http")
-async def monitor_requests(request: Request, call_next):
+async def add_monitoring(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
-
-    # Record metrics 
-    stats_recorder.new_measurement(
-        "request_latency",
-        duration,
-        {"endpoint": request.url.path}
-    )
+    
+    # Log request duration
+    logger.info(f"Request to {request.url.path} took {duration:.2f} seconds")
     return response
+
+# Add health checks
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "1.1",
+        "timestamp": datetime.now(UTC).timestamp()
+    }
 
 ##############################################################################
 # 9) Azure Container App Configuration
@@ -413,6 +441,17 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+##############################################################################
+# 10) Documentation
+##############################################################################
+
+@app.get("/docs")
+async def get_documentation():
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="Astro App Backend API Documentation"
+    )
 
 # Comment out legacy SQLite + SQLAlchemy code for local development
 

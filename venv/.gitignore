@@ -1,0 +1,9 @@
+*log.txt
+
+__pycache__
+
+stars.db
+
+venv
+
+.env
