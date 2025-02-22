@@ -2,4 +2,15 @@ fastapi==0.115.8
 httpx==0.25.1
 sqlalchemy==2.0.35
 azure-storage-blob==12.16.0
+azure-data-tables==12.6.0
 uvicorn==0.25.0
+python-dotenv==1.0.1
+azure-core==1.32.0
+pydantic==2.10.2
+redis==4.6.0
+opencensus-ext-azure==1.0.1
+fastapi-cache==0.1.0
+fastapi-cache2[redis]==0.2.2
+opencensus>=0.7.0,<1.0.0
+python-jose[cryptography]==3.3.0
+fastapi-limiter==0.1.6
