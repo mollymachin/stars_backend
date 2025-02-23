@@ -1,0 +1,19 @@
+services:
+  fastapi:
+    build: .
+    container_name: fastapi_backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: always
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_proxy
+    depends_on:
+      - fastapi
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+   

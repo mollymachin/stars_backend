@@ -5,6 +5,7 @@ import asyncio
 import uuid
 import os
 import math
+import logging
 
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -16,23 +17,23 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from redis import asyncio as aioredis
 from pydantic import BaseModel
 from azure.data.tables import TableServiceClient
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from opencensus.ext.azure import metrics_exporter
 from opencensus.stats import stats as stats_module
 from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import ResourceNotFoundError
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 from datetime import datetime, UTC
 from typing import Optional
 
 load_dotenv()
 
-# Keep SQLAlchemy for reference, but we're using Azure Table Storage
-# from sqlalchemy import create_engine, Column, Integer, Float, String
-# from sqlalchemy.ext.declarative import declarative_base
-# from sqlalchemy.orm import sessionmaker, Session
+
+
 
 # Comment out legacy SQLite + SQLAlchemy code for local development
 
@@ -69,7 +70,7 @@ tables = {}
 for table_name in ["Users", "Stars", "UserStars"]:
     try:
         tables[table_name] = table_service_client.create_table_client(table_name)
-    except ResourceExistsError:
+    except ResourceNotFoundError:
         tables[table_name] = table_service_client.get_table_client(table_name)
 
 
@@ -346,7 +347,7 @@ async def remove_star(star_id: str):
         })
 
         return {"message": f"Star {star_id} successfully removed"}
-    except ResourceNotFoundError:
+    except Resou:
         raise HTTPException(status_code=404, detail=f"Star with ID {star_id} not found")
     
 @app.delete("/stars")
@@ -381,7 +382,6 @@ async def stream_stars(request: Request):
                 yield ": keep-alive\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
 
 @app.get("/stars/active")
 @cache(expire=300)
