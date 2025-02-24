@@ -14,10 +14,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose necessary ports
-EXPOSE 80 8080
+EXPOSE 8000
 
-# Start both Nginx and FastAPI
-CMD ["sh", "-c", "nginx && uvicorn database_service:app --host 0.0.0.0 --port 8080"]
+# Start FastAPI
+CMD ["uvicorn", "database_service:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Add metadata
 LABEL org.opencontainers.image.source=https://github.com/hillcallum/stars_backend
