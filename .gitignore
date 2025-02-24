@@ -1,7 +1,6 @@
 *log.txt
-
-__pycache__
-
+**pycache**
+.env
+.env.local
 stars.db
-
 venv
