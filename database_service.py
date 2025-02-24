@@ -15,11 +15,16 @@ from fastapi_cache.backends.redis import RedisBackend
 from fastapi_cache.decorator import cache
 from fastapi.openapi.docs import get_swagger_ui_html
 from redis import asyncio as aioredis
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from azure.data.tables import TableServiceClient
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
-from opencensus.ext.azure import metrics_exporter
-from opencensus.stats import stats as stats_module
+try:
+    from opencensus.ext.azure import metrics_exporter
+    from opencensus.stats import stats as stats_module
+    AZURE_MONITORING = True
+except ImportError:
+    AZURE_MONITORING = False
+    print("Azure monitoring disabled - opencensus not installed")
 from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -29,34 +34,20 @@ from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 from datetime import datetime, UTC
 from typing import Optional
+from fastapi.responses import JSONResponse
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
+from fastapi.openapi.utils import get_openapi
 
 load_dotenv()
 
-
-
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Comment out legacy SQLite + SQLAlchemy code for local development
-
-'''
-
-##############################################################################
-# 1) Database Setup (SQLite + SQLAlchemy)
-##############################################################################
-DB_URL = os.getenv("DATABASE_URL", "sqlite:///./stars.db")
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-
-Base = declarative_base()
-
-class StarDB(Base):
-    __tablename__ = "stars"
-    id = Column(Integer, primary_key=True, index=True)
-    x = Column(Float, nullable=False)
-    y = Column(Float, nullable=False)
-    message = Column(String, nullable=False)
-
-Base.metadata.create_all(bind=engine)
-'''
 
 ##############################################################################
 # 2) Azure Table Storage Setup
@@ -86,6 +77,18 @@ class Star(BaseModel):
     brightness: Optional[float] = 100.0
     last_liked: Optional[float] = None
 
+    @validator('x', 'y')
+    def validate_coordinates(cls, v):
+        if not -1 <= v <= 1:
+            raise ValueError('Coordinates must be between -1 and 1')
+        return v
+
+    @validator('message')
+    def validate_message(cls, v):
+        if len(v) > 280:  # Twitter-style limit
+            raise ValueError('Message too long')
+        return v
+
 class User(BaseModel):
     id: Optional[str] = None
     name: str
@@ -104,6 +107,14 @@ user_event_queue = asyncio.Queue()
 ##############################################################################
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Update this for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/users")
 async def create_user(user: User):
@@ -232,6 +243,7 @@ async def get_star(star_id: str):
         raise HTTPException(status_code=404, detail="Star not found")
 
 @app.post("/stars/{star_id}/like")
+@limiter.limit("5/minute")
 async def like_star(star_id: str):
     """Like a star and update popularity metrics."""
     try:
@@ -347,7 +359,7 @@ async def remove_star(star_id: str):
         })
 
         return {"message": f"Star {star_id} successfully removed"}
-    except Resou:
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail=f"Star with ID {star_id} not found")
     
 @app.delete("/stars")
@@ -410,8 +422,12 @@ async def get_active_stars():
 # 8) Azure Monitor Metrics
 ##############################################################################
 
-exporter = metrics_exporter.new_metrics_exporter()
-stats_recorder = stats_module.stats_recorder
+if AZURE_MONITORING:
+    exporter = metrics_exporter.new_metrics_exporter()
+    stats_recorder = stats_module.stats_recorder
+else:
+    exporter = None
+    stats_recorder = None
 
 # Add performance monitoring
 @app.middleware("http")
@@ -420,8 +436,8 @@ async def add_monitoring(request: Request, call_next):
     response = await call_next(request)
     duration = time.time() - start_time
     
-    # Log request duration
-    logger.info(f"Request to {request.url.path} took {duration:.2f} seconds")
+    # Log request duration (without opencensus)
+    print(f"Request to {request.url.path} took {duration:.2f} seconds")
     return response
 
 # Add health checks
@@ -434,7 +450,43 @@ async def health_check():
     }
 
 ##############################################################################
-# 9) Azure Container App Configuration
+# 9) Error Handling
+##############################################################################
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
+
+@app.middleware("http")
+async def add_error_handling(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"}
+        )
+    
+
+##############################################################################
+# 10) Logging
+##############################################################################
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
+
+
+##############################################################################
+# 11) Azure Container App Configuration
 ##############################################################################
 
 if __name__ == "__main__":
@@ -443,7 +495,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 ##############################################################################
-# 10) Documentation
+# 12) Documentation
 ##############################################################################
 
 @app.get("/docs")
@@ -453,153 +505,33 @@ async def get_documentation():
         title="Astro App Backend API Documentation"
     )
 
-# Comment out legacy SQLite + SQLAlchemy code for local development
-
-'''
-
 ##############################################################################
-# 4) Startup Event: Pre-populate DB if empty
-##############################################################################
-@app.on_event("startup")
-def startup_populate_db():
-    with SessionLocal() as db:
-        # Check if there's any star in the DB
-        count = db.query(StarDB).count()
-        if count == 0:
-            print("No stars in DB. Pre-populating with some fake data.")
-            initial_data = [
-                StarDB(x=0.5, y=0.5, message="Alpha Star"),
-                StarDB(x=-0.4, y=0.1, message="Beta Star"),
-                StarDB(x=0.0, y=-0.7, message="Gamma Star"),
-            ]
-            db.add_all(initial_data)
-            db.commit()
-'''
-
-# Comment out legacy SQLite + SQLAlchemy code for local development
-
-'''
-##############################################################################
-# 5) Dependency for DB session
-##############################################################################
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-'''
-
-# Comment out legacy SQLite + SQLAlchemy code for local development
-
-'''
-
-##############################################################################
-# 6) CRUD + SSE Endpoints
+# 13) OpenAPI
 ##############################################################################
 
-@app.get("/stars")
-def get_stars(db: Session = Depends(get_db)):
-    """
-    Return all stars from the DB.
-    """
-    results = db.query(StarDB).all()
-    return [Star(id=s.id, x=s.x, y=s.y, message=s.message) for s in results]
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="Star Map API",
+        version="1.0.0",
+        description="API for managing stars in the star map application",
+        routes=app.routes,
+    )
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
-
-@app.post("/stars")
-def add_star(star: Star, db: Session = Depends(get_db)):
-    """
-    Add a new star to the DB. Then push an SSE event.
-    """
-    new_star = StarDB(x=star.x, y=star.y, message=star.message)
-    db.add(new_star)
-    db.commit()
-    db.refresh(new_star)
-    
-    # Push SSE event
-    star_event_queue.put_nowait({
-        "event": "add",
-        "star": {
-            "id": new_star.id,
-            "x": new_star.x,
-            "y": new_star.y,
-            "message": new_star.message
-        }
-    })
-    return {"id": new_star.id, "x": new_star.x, "y": new_star.y, "message": new_star.message}
-
-
-@app.delete("/stars/{star_id}")
-def remove_star(star_id: int, db: Session = Depends(get_db)):
-    """
-    Remove a star by ID. Then push an SSE event.
-    """
-    star_to_remove = db.query(StarDB).filter(StarDB.id == star_id).first()
-    if not star_to_remove:
-        raise HTTPException(status_code=404, detail="Star not found")
-
-    db.delete(star_to_remove)
-    db.commit()
-    
-    # SSE event
-    star_event_queue.put_nowait({
-        "event": "remove",
-        "star": {
-            "id": star_to_remove.id,
-            "x": star_to_remove.x,
-            "y": star_to_remove.y,
-            "message": star_to_remove.message
-        }
-    })
-
-    return {
-        "id": star_to_remove.id,
-        "x": star_to_remove.x,
-        "y": star_to_remove.y,
-        "message": star_to_remove.message
-    }
-
-# NB!!! This is dangerous. Only for admins TODO
-@app.delete("/stars")
-def remove_all_stars(db: Session = Depends(get_db)):
-    """
-    Remove all stars from the DB.
-    """
-    db.query(StarDB).delete()
-    db.commit()
-
-    # Push SSE event
-    star_event_queue.put_nowait({
-        "event": "remove_all"
-    })
-
-    return {"message": "All stars removed"}
-
-
-@app.get("/stars/stream")
-async def stream_stars(request: Request):
-    """
-    SSE endpoint that emits star add/remove events.
-    If no event occurs within 15 seconds, send a keep-alive comment.
-    """
-    async def event_generator():
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                event = await asyncio.wait_for(star_event_queue.get(), timeout=15.0)
-                # We'll yield the event as a Python dict string. 
-                yield f"data: {event}\n\n"
-            except asyncio.TimeoutError:
-                # Keep-alive
-                yield ": keep-alive\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-'''
+app.openapi = custom_openapi
 
 ##############################################################################
-# 7) To run locally:
-#     uvicorn database_service:app --host 127.0.0.1 --port 5000 --reload
+# 14) Settings
 ##############################################################################
+
+class Settings:
+    def __init__(self):
+        self.ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+        self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+        self.REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+        self.CACHE_TTL = int(os.getenv("CACHE_TTL", 300))
+
+settings = Settings()

@@ -15,3 +15,10 @@ opencensus>=0.7.0,<1.0.0
 python-jose[cryptography]==3.3.0
 fastapi-limiter==0.1.6
 python-dotenv==1.0.1
+pytest==7.4.3
+pytest-mock==3.14.0
+pytest-asyncio==0.21.0
+pytest-cov==4.1.0
+pytest-mock==3.14.0
+pytest-asyncio==0.21.0
+fastapi-limiter==0.1.6
