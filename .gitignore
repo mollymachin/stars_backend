@@ -3,5 +3,7 @@
 __pycache__
 
 stars.db
+*.db
 
 venv
+stars.db
