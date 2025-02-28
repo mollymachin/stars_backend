@@ -19,3 +19,11 @@ properties:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+          - type: startup
+            httpGet:
+              path: /health/liveness
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+            # Allow up to 60 seconds (6 * 10) for the application to start

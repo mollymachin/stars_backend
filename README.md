@@ -32,12 +32,56 @@ A microservice for managing celestial objects in a star map application. This se
    # Edit .env with your credentials
    ```
 
+   Or use our configuration generator:
+   ```bash
+   python -m src.generate_env development
+   ```
+
 3. Start the application with Docker Compose
    ```bash
    docker compose up
    ```
 
 4. Access the API at http://localhost:80
+
+### Configuration Management
+
+The application uses a comprehensive settings management system based on Pydantic:
+
+1. **Configuration Files**:
+   - `.env.example` - Template with all available settings
+   - `.env` - Your local development settings
+   - `.env.{environment}` - Environment-specific settings (development, staging, production, test)
+
+2. **Configuration Utilities**:
+   - `src/generate_env.py` - Generate environment-specific configuration files
+   ```bash
+   # Generate a development configuration
+   python -m src.generate_env development
+   
+   # Generate a production configuration
+   python -m src.generate_env production -o .env.prod
+   ```
+   
+   - `src/validate_config.py` - Validate your current configuration
+   ```bash
+   # Validate your current configuration
+   python -m src.validate_config
+   ```
+
+3. **Configuration Groups**:
+   - Application settings - Core application settings
+   - Azure Storage settings - Database configuration
+   - Redis settings - Caching and rate limiting
+   - API settings - CORS, rate limiting, etc.
+   - Logging settings - Log levels and formats
+
+4. **Environment-Specific Settings**:
+   The system automatically applies appropriate defaults based on your environment:
+   - `development` - Debugging enabled, localhost services
+   - `staging` - Production-like with staging endpoints
+   - `production` - Optimized for production use
+   - `test` - Configuration for running tests
 
 ### Running Tests
 ```bash
@@ -72,17 +116,54 @@ az containerapp update \
 
 ## Environment Variables
 
+The application uses a hierarchical configuration system with prefixed environment variables:
+
+### Application Settings
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| AZURE_STORAGE_CONNECTION_STRING | Connection string for Azure Table Storage | Yes | - |
-| AZURE_STORAGE_ACCOUNT_URL | URL for Azure Table Storage account | Yes | - |
-| REDIS_HOST | Redis cache hostname | Yes | - |
-| REDIS_PORT | Redis port | Yes | 6380 |
-| REDIS_PASSWORD | Redis access key | Yes | - |
-| REDIS_SSL | Whether to use SSL for Redis | Yes | true |
-| USE_MANAGED_IDENTITY | Whether to use Azure Managed Identity | No | false |
-| ENVIRONMENT | Deployment environment | No | production |
+| ENVIRONMENT | Deployment environment (development, staging, production, test) | No | development |
 | PORT | Application port | No | 8080 |
+| DEBUG | Enable debugging features | No | false |
+| PROJECT_NAME | API name for documentation | No | Star Map API |
+| VERSION | API version | No | 1.1.0 |
+
+### Azure Storage Settings (prefix: AZURE_STORAGE_)
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| CONNECTION_STRING | Connection string for Azure Table Storage | Yes* | - |
+| ACCOUNT_URL | URL for Azure Storage account (used with managed identity) | Yes* | - |
+| USE_MANAGED_IDENTITY | Whether to use Azure Managed Identity | No | false |
+
+*Either CONNECTION_STRING or both USE_MANAGED_IDENTITY and ACCOUNT_URL must be provided.
+
+### Redis Settings (prefix: REDIS_)
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| HOST | Redis hostname | Yes | - |
+| PORT | Redis port | No | 6379 |
+| PASSWORD | Redis access key | No | - |
+| SSL | Whether to use SSL for Redis | No | false |
+| CACHE_TTL | Default cache TTL in seconds | No | 300 |
+| POPULAR_CACHE_TTL | Cache TTL for popular items in seconds | No | 3600 |
+| POPULARITY_THRESHOLD | Threshold for considering an item popular | No | 50 |
+| POPULARITY_WINDOW | Time window for popularity calculation in seconds | No | 3600 |
+
+### API Settings (prefix: API_)
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| CORS_ORIGINS | List of allowed CORS origins in JSON format | No | ["*"] |
+| RATE_LIMIT_TIMES | Number of requests allowed in the time window | No | 5 |
+| RATE_LIMIT_SECONDS | Time window for rate limiting in seconds | No | 60 |
+
+### Logging Settings (prefix: LOG_)
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| LEVEL | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) | No | INFO |
+| FORMAT | Log format string | No | %(asctime)s - %(name)s - %(levelname)s - %(message)s |
+
+### Other Settings
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
 | AZURE_MONITORING | Enable Azure monitoring | No | false |
 
 ## API Endpoints

@@ -17,11 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install azure.identity>=1.10.0
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir azure.identity>=1.10.0
+
+# Create necessary directories
+RUN mkdir -p /app/src /app/logs
 
 # Copy application code
-COPY database_service.py .
+COPY src/ /app/src/
 COPY .env.example .
 
 # Create a non-root user and switch to it
@@ -37,7 +41,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Command to run the application
-CMD ["python", "database_service.py"]
+CMD ["python", "-m", "src.database_service"]
 
 # Add metadata
 LABEL org.opencontainers.image.source=https://github.com/hillcallum/stars_backend

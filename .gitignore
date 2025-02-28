@@ -10,6 +10,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.env.docker
+.env.prod
+.env.dev
 env_backup/
 
 # Archive folders with sensitive data
