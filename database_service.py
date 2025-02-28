@@ -18,6 +18,7 @@ from redis import asyncio as aioredis
 from pydantic import BaseModel, validator
 from azure.data.tables import TableServiceClient
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.core.pipeline.policies import RetryPolicy, RetryMode
 try:
     from opencensus.ext.azure import metrics_exporter
     from opencensus.stats import stats as stats_module
@@ -50,20 +51,54 @@ logger = logging.getLogger(__name__)
 # Comment out legacy SQLite + SQLAlchemy code for local development
 
 ##############################################################################
-# 2) Azure Table Storage Setup
+# 2) Azure Table Storage Setup with Connection Pooling & Retry Logic
 ##############################################################################
 
-connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-table_service_client = TableServiceClient.from_connection_string(connection_string)
+# Configure retry policy for resilience
+retry_policy = RetryPolicy(
+    retry_mode=RetryMode.Exponential,
+    backoff_factor=2,
+    backoff_max=60,
+    total_retries=5
+)
 
-# Create or get tables
+# Use managed identity if available, otherwise connection string
+connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+managed_identity_enabled = os.getenv("USE_MANAGED_IDENTITY", "false").lower() == "true"
+
+if managed_identity_enabled:
+    from azure.identity import DefaultAzureCredential
+    credential = DefaultAzureCredential()
+    account_url = os.getenv("AZURE_STORAGE_ACCOUNT_URL")
+    table_service_client = TableServiceClient(
+        endpoint=account_url,
+        credential=credential,
+        retry_policy=retry_policy
+    )
+    logger.info("Using managed identity for Azure Table Storage authentication")
+else:
+    table_service_client = TableServiceClient.from_connection_string(
+        connection_string,
+        retry_policy=retry_policy
+    )
+    logger.info("Using connection string for Azure Table Storage authentication")
+
+# Initialise tables with retry logic
 tables = {}
 for table_name in ["Users", "Stars", "UserStars"]:
-    try:
-        tables[table_name] = table_service_client.create_table_client(table_name)
-    except ResourceNotFoundError:
-        tables[table_name] = table_service_client.get_table_client(table_name)
-
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            table_service_client.create_table_if_not_exists(table_name)
+            tables[table_name] = table_service_client.get_table_client(table_name)
+            logger.info(f"Successfully initialized table: {table_name}")
+            break
+        except Exception as e:
+            if attempt == max_attempts - 1:
+                logger.error(f"Failed to initialize table {table_name} after {max_attempts} attempts: {str(e)}")
+                raise
+            logger.warning(f"Failed to initialize table {table_name}, attempt {attempt+1}/{max_attempts}: {str(e)}")
+            time.sleep(2 ** attempt)  # Exponential backoff
 
 ##############################################################################
 # 3) Pydantic Models
@@ -159,7 +194,7 @@ async def add_star(star: Star):
     return star_entity
 
 ##############################################################################
-# 6) Redis Cache Configuration
+# 6) Redis Cache Configuration with Connection Pooling
 ##############################################################################
 
 CACHE_TTL_SECONDS = 300 # Regular cache TTL
@@ -169,21 +204,42 @@ POPULARITY_WINDOW_SECONDS = 3600 # Time window for popularity calculation
 
 @app.on_event("startup")
 async def startup():
-    # Add this to your existing startup function
     redis_host = os.getenv("REDIS_HOST")
     redis_password = os.getenv("REDIS_PASSWORD")
-    redis_url = f"redis://{redis_host}:6379"
+    redis_ssl = os.getenv("REDIS_SSL", "false").lower() == "true"
+    redis_port = int(os.getenv("REDIS_PORT", "6379"))
     
-    redis = aioredis.from_url(
-        redis_url,
-        password=redis_password,
-        encoding="utf8",
-        decode_responses=True
-    )
-    FastAPICache.init(
-        backend=RedisBackend(redis),
-        prefix="starmap-cache"
-    )
+    # Construct Redis URL with proper SSL handling
+    redis_scheme = "rediss" if redis_ssl else "redis"
+    redis_url = f"{redis_scheme}://{redis_host}:{redis_port}"
+    
+    # Configure connection pool
+    try:
+        redis = aioredis.from_url(
+            redis_url,
+            password=redis_password,
+            encoding="utf8",
+            decode_responses=True,
+            max_connections=10,  # Configure pool size based on container resources
+            retry_on_timeout=True,
+            socket_connect_timeout=10.0,  # Add timeout to prevent hanging
+            socket_keepalive=True  # Keep connection alive
+        )
+        await redis.ping()  # Test connection
+        logger.info("Successfully connected to Redis cache")
+        
+        FastAPICache.init(
+            backend=RedisBackend(redis),
+            prefix="starmap-cache"
+        )
+        
+        # Initialize rate limiter
+        await FastAPILimiter.init(redis)
+        logger.info("Rate limiter initialized")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {str(e)}")
+        # Continue without Redis - the app will function without caching
+        logger.warning("Application continuing without Redis cache")
 
 ##############################################################################
 # 7) CRUD + SSE Endpoints
@@ -243,7 +299,7 @@ async def get_star(star_id: str):
         raise HTTPException(status_code=404, detail="Star not found")
 
 @app.post("/stars/{star_id}/like")
-@limiter.limit("5/minute")
+# Comment out for testing: async def like_star(star_id: str, _=Depends(RateLimiter(times=5, seconds=60))):
 async def like_star(star_id: str):
     """Like a star and update popularity metrics."""
     try:
@@ -377,7 +433,7 @@ async def remove_all_stars():
 
     return {"message": "All stars removed"}
 
-@app.get("stars/stream")
+@app.get("/stars/stream")
 async def stream_stars(request: Request):
     """
     SSE endpoint that emits star add/remove events.
@@ -424,7 +480,7 @@ async def get_active_stars():
 
 if AZURE_MONITORING:
     exporter = metrics_exporter.new_metrics_exporter()
-    stats_recorder = stats_module.stats_recorder
+    stats_recorder = stats_module.StatsRecorder()
 else:
     exporter = None
     stats_recorder = None
@@ -486,7 +542,65 @@ async def log_requests(request: Request, call_next):
 
 
 ##############################################################################
-# 11) Azure Container App Configuration
+# 11) Container Readiness and Health Probes
+##############################################################################
+
+@app.get("/health/readiness")
+async def readiness_check():
+    """
+    Readiness probe for container orchestrators.
+    Verifies database connections are operational.
+    """
+    health_status = {"status": "ready", "services": {}}
+    
+    # Check Azure Table Storage
+    try:
+        # Test Azure Table Storage connection
+        tables["Users"].list_entities(select="RowKey", top=1)
+        health_status["services"]["azure_tables"] = "healthy"
+    except Exception as e:
+        logger.warning(f"Azure Tables check failed: {str(e)}")
+        health_status["status"] = "not_ready"
+        health_status["services"]["azure_tables"] = f"unhealthy: {str(e)}"
+    
+    # Check Redis connection - don't fail readiness if Redis is down
+    try:
+        if 'FastAPICache' in globals() and FastAPICache._backend is not None:
+            redis = FastAPICache.get_backend().client
+            await redis.ping()
+            health_status["services"]["redis"] = "healthy"
+        else:
+            health_status["services"]["redis"] = "not configured"
+    except Exception as e:
+        logger.warning(f"Redis check failed: {str(e)}")
+        health_status["services"]["redis"] = f"unhealthy: {str(e)}"
+        # Don't fail readiness just because Redis is down - app can function without it
+    
+    status_code = 200 if health_status["status"] == "ready" else 503
+    return JSONResponse(status_code=status_code, content=health_status)
+
+@app.get("/health/liveness")
+async def liveness_check():
+    """
+    Liveness probe for container orchestrators.
+    Simple check to verify the application is running.
+    """
+    return {"status": "alive", "timestamp": datetime.now(UTC).timestamp()}
+
+##############################################################################
+# 12) Logging
+##############################################################################
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
+
+
+##############################################################################
+# 13) Azure Container App Configuration
 ##############################################################################
 
 if __name__ == "__main__":
@@ -495,7 +609,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 ##############################################################################
-# 12) Documentation
+# 14) Documentation
 ##############################################################################
 
 @app.get("/docs")
@@ -506,7 +620,7 @@ async def get_documentation():
     )
 
 ##############################################################################
-# 13) OpenAPI
+# 15) OpenAPI
 ##############################################################################
 
 def custom_openapi():
@@ -524,7 +638,7 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 ##############################################################################
-# 14) Settings
+# 16) Settings
 ##############################################################################
 
 class Settings:

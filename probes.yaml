@@ -1,0 +1,21 @@
+properties:
+  template:
+    containers:
+      - name: starmap-service
+        probes:
+          - type: liveness
+            httpGet:
+              path: /health/liveness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          - type: readiness
+            httpGet:
+              path: /health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
