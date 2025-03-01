@@ -10,6 +10,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.development
 .env.docker
 .env.prod
 .env.dev
@@ -58,3 +59,26 @@ build/
 # Logs
 *log.txt
 *.log
+logs/
+
+# Docker volumes
+*_data/
+*_data_*/
+redis_data*/
+
+# Azure local storage
+azurite_data/
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+*.bak
+
+# SSL certificates (often used with nginx)
+*.pem
+*.key
+*.crt
+
+# Debug/development files
+src/api/debug.py

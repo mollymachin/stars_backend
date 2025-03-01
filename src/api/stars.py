@@ -14,7 +14,7 @@ from src.dependencies.providers import get_redis, get_table_storage
 from fastapi_cache import FastAPICache
 from datetime import datetime
 import datetime as dt
-from src.api.sse import star_event_queue
+from src.api.sse_publisher import publish_star_event
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -230,18 +230,15 @@ async def like_star(
 
         tables["Stars"].update_entity(star)
         
-        # Push SSE event
+        # Use the new publisher module
         try:
-            await star_event_queue.put({
-                "event": "update",
-                "star": {
-                    "id": star_id,
-                    "brightness": star["Brightness"],
-                    "last_liked": current_time
-                }
+            await publish_star_event("update", {
+                "id": star_id,
+                "brightness": star["Brightness"],
+                "last_liked": current_time
             })
-        except Exception as sse_error:
-            logger.warning(f"Failed to push SSE event for star {star_id}: {str(sse_error)}")
+        except Exception as e:
+            logger.warning(f"Failed to publish event for star {star_id}: {str(e)}")
         
         return {
             "id": star_id,
@@ -271,21 +268,18 @@ async def add_star(star: Star):
         }
         tables["Stars"].create_entity(star_entity)
 
-        # Push SSE event 
+        # Use the new publisher module
         try:
-            await star_event_queue.put({
-                "event": "add",
-                "star": {
-                    "id": star_entity["RowKey"],
-                    "x": star.x,
-                    "y": star.y,
-                    "message": star.message,
-                    "brightness": star.brightness or 100.0,
-                    "last_liked": current_time
-                }
+            await publish_star_event("create", {
+                "id": star_entity["RowKey"],
+                "x": star.x,
+                "y": star.y,
+                "message": star.message,
+                "brightness": star.brightness or 100.0,
+                "last_liked": current_time
             })
         except Exception as e:
-            logger.warning(f"Failed to push SSE event for new star: {str(e)}")
+            logger.warning(f"Failed to publish event for new star: {str(e)}")
             
         return {
             "id": star_entity["RowKey"],
@@ -364,25 +358,22 @@ async def remove_star(star_id: str):
             
         tables["Stars"].delete_entity(star["PartitionKey"], star["RowKey"])
 
-        # Push SSE event
+        # Use the new publisher module
         try:
-            await star_event_queue.put({
-                "event": "remove",
-                "star": {
-                    "id": star_id,
-                    "x": star.get("X"),
-                    "y": star.get("Y"),
-                    "message": star.get("Message")
-                }
+            await publish_star_event("delete", {
+                "id": star_id,
+                "x": star.get("X"),
+                "y": star.get("Y"),
+                "message": star.get("Message")
             })
         except Exception as e:
-            logger.warning(f"Failed to push SSE event for removed star: {str(e)}")
+            logger.warning(f"Failed to publish event for removed star: {str(e)}")
 
-        return {"message": f"Star {star_id} successfully removed"}
+        return {"id": star_id, "status": "deleted"}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error removing star {star_id}: {str(e)}")
+        logger.error(f"Error removing star: {str(e)}")
         raise HTTPException(status_code=500, detail="Error removing star")
 
 def calculate_current_brightness(base_brightness: float, last_liked: float) -> float:
