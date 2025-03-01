@@ -3,27 +3,29 @@ import json
 import time
 from datetime import datetime, UTC
 from fastapi.testclient import TestClient
-from database_service import app, Star, User
+from src.main import app
+from src.models.stars import Star
+from src.models.users import User
 from unittest.mock import Mock, patch, MagicMock
 import sys
 
 client = TestClient(app)
 
 # Mock out FastAPILimiter for testingL
-with patch('database_service.RateLimiter', MagicMock()):
+with patch('src.db.redis_cache.FastAPILimiter', MagicMock()):
     # Tests can now run without rate limiting dependency
     pass
 
 # Create a mock limiter
 mock_limiter = MagicMock()
 mock_limiter.limit = lambda x: lambda func: func
-sys.modules['database_service'].limiter = mock_limiter
+sys.modules['src.db.redis_cache'].limiter = mock_limiter
 
 # Mock Azure Table Storage
 @pytest.fixture
 def mock_tables():
     """Mock the tables dictionary with table clients"""
-    with patch('database_service.tables') as mock_tables:
+    with patch('src.db.azure_tables.tables') as mock_tables:
         # Create mock table clients
         mock_tables["Stars"] = MagicMock()
         mock_tables["Users"] = MagicMock()
@@ -34,7 +36,7 @@ def mock_tables():
 @pytest.fixture
 def mock_table_service():
     """Mock the Azure TableServiceClient"""
-    with patch('database_service.TableServiceClient') as mock:
+    with patch('src.db.azure_tables.TableServiceClient') as mock:
         mock_client = Mock()
         mock.from_connection_string.return_value = mock_client
         yield mock
@@ -43,7 +45,7 @@ def mock_table_service():
 @pytest.fixture
 def mock_redis():
     """Mock Redis client"""
-    with patch('database_service.aioredis') as mock:
+    with patch('src.db.redis_cache.aioredis') as mock:
         mock_redis = MagicMock()
         mock.from_url.return_value = mock_redis
         yield mock_redis
@@ -52,7 +54,7 @@ def mock_redis():
 @pytest.fixture
 def mock_fastapi_cache():
     """Mock FastAPICache"""
-    with patch('database_service.FastAPICache') as mock:
+    with patch('src.db.redis_cache.FastAPICache') as mock:
         mock_backend = MagicMock()
         mock.get_backend.return_value = mock_backend
         yield mock
