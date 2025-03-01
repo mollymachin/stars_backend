@@ -1,23 +1,47 @@
-# Use lightweight Python image
-FROM python:3.11-slim
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
 
 # Set working directory
 WORKDIR /app
 
-# Copy source code
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir azure.identity>=1.10.0
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Create necessary directories
+RUN mkdir -p /app/src /app/logs
 
-# Copy the rest of the application
-COPY . .
+# Copy application code
+COPY src/ /app/src/
+COPY .env.example .
 
-# Expose necessary ports
-EXPOSE 8000
+# Create a non-root user and switch to it
+RUN adduser --disabled-password --gecos "" appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 
-# Start FastAPI
-CMD ["uvicorn", "database_service:app", "--host", "0.0.0.0", "--port", "8000"]
+# Expose the port the app runs on
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
+
+# Command to run the application
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 # Add metadata
 LABEL org.opencontainers.image.source=https://github.com/hillcallum/stars_backend

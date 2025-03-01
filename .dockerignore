@@ -1,3 +1,8 @@
+# Version control
+.git/
+.gitignore
+.github/
+
 # Python cache files
 __pycache__/
 *.py[cod]
@@ -6,51 +11,50 @@ __pycache__/
 .coverage
 .python-version
 
-# Environment files - keep only example
+# Virtual environments
+venv/
+.venv/
+env/
+virtualenv/
+
+# Local environment files
 .env
 .env.*
 !.env.example
-.env.docker
-.env.prod
-.env.dev
 env_backup/
 
-# Archive folders with sensitive data
+# Archive and backup files
 archive/
 **/database_versions/
 **/deploy_configs/
 **/docker_files/
 **/env_files/
 
-# Local database
+# Database
 stars.db
 *.sqlite3
 
-# Local scripts
+# Cleaning scripts
 cleanup.sh
 clean_up.sh
-
-# Virtual environment
-venv/
-.venv/
 
 # Cache folders
 .cache/
 cache/
 CACHEDIR.TAG
 
-# macOS specific files
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Editor specific files
+# Editor files
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Build and distribution
+# Docker-specific files (avoid recursive copies)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Build artifacts
 dist/
 build/
 *.egg-info/

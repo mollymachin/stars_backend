@@ -1,17 +1,53 @@
-services:
-  fastapi_backend:
-    build: .
-    expose:
-      - "8000"
-    command: uvicorn database_service:app --host 0.0.0.0 --port 8000
-    env_file:
-      - .env
+version: '3.8'
 
-  nginx:
-    image: nginx:alpine
+services:
+  redis:
+    image: redis:7-alpine
     ports:
-      - "80:80"
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - azurite_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:10002"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.development
+    environment:
+      - REDIS_HOST=redis
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://azurite:10002/devstoreaccount1;
+    volumes:
+      - ./:/app
+    ports:
+      - "8080:8080"
     depends_on:
-      - fastapi_backend
+      redis:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+
+volumes:
+  azurite_data:
+
+networks:
+  default:
+    name: stars_network
