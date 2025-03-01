@@ -5,7 +5,7 @@ from typing import List, Optional
 from src.config.settings import settings
 from src.models.user import User
 from src.db.azure_tables import tables
-from src.api.sse import user_event_queue
+from src.api.sse_publisher import publish_user_event
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -16,18 +16,15 @@ async def create_user(user: User):
     user_entity = user.to_entity()
     tables["Users"].create_entity(user_entity)
     
-    # Push SSE event if configured
+    # Use the new publisher module
     try:
-        await user_event_queue.put({
-            "event": "new_user",
-            "user": {
-                "id": user_entity["RowKey"],
-                "name": user.name,
-                "email": user.email
-            }
+        await publish_user_event("create", {
+            "id": user_entity["RowKey"],
+            "name": user.name,
+            "email": user.email
         })
     except Exception as e:
-        logger.warning(f"Failed to push SSE event for new user: {str(e)}")
+        logger.warning(f"Failed to publish event for new user: {str(e)}")
     
     return {"user_id": user_entity["RowKey"], **user.dict()}
 
@@ -77,18 +74,15 @@ async def update_user(user_id: str, user: User):
         # Save changes
         tables["Users"].update_entity(existing_user)
         
-        # Push SSE event
+        # Use the new publisher module
         try:
-            await user_event_queue.put({
-                "event": "update_user",
-                "user": {
-                    "id": user_id,
-                    "name": user.name,
-                    "email": user.email
-                }
+            await publish_user_event("update", {
+                "id": user_id,
+                "name": user.name,
+                "email": user.email
             })
         except Exception as e:
-            logger.warning(f"Failed to push SSE event for updated user: {str(e)}")
+            logger.warning(f"Failed to publish event for updated user: {str(e)}")
             
         return {
             "id": user_id,
@@ -110,18 +104,15 @@ async def delete_user(user_id: str):
         # Delete the user
         tables["Users"].delete_entity(partition_key="USER", row_key=user_id)
         
-        # Push SSE event
+        # Use the new publisher module
         try:
-            await user_event_queue.put({
-                "event": "delete_user",
-                "user": {
-                    "id": user_id
-                }
+            await publish_user_event("delete", {
+                "id": user_id
             })
         except Exception as e:
-            logger.warning(f"Failed to push SSE event for deleted user: {str(e)}")
+            logger.warning(f"Failed to publish event for deleted user: {str(e)}")
             
-        return {"message": f"User {user_id} successfully deleted"}
+        return {"id": user_id, "status": "deleted"}
     except Exception as e:
         logger.error(f"Error deleting user {user_id}: {str(e)}")
         raise HTTPException(status_code=404, detail="User not found")

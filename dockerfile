@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir azure.identity>=1.10.0
+    pip install --no-cache-dir azure.identity>=1.10.0 && \
+    pip install --no-cache-dir pydantic-settings>=2.0.0
 
 # Create necessary directories
 RUN mkdir -p /app/src /app/logs

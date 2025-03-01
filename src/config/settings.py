@@ -109,7 +109,8 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(".env", f".env.{os.getenv('ENVIRONMENT', 'development').lower()}"),
         env_file_encoding="utf-8",
-        case_sensitive=True
+        case_sensitive=True,
+        extra="ignore"  # Allow and ignore extra fields
     )
 
 # Initialize settings once - MOVED TO THE END OF THE FILE
