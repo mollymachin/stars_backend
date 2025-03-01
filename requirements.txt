@@ -1,20 +1,20 @@
 # Core dependencies
-fastapi==0.115.8
-uvicorn==0.25.0
-pydantic==2.10.2
-pydantic-settings==2.2.1
-python-dotenv==1.0.1
+fastapi>=0.96.0,<0.97.0
+uvicorn>=0.22.0,<0.23.0
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
 
 # Database and storage
-sqlalchemy==2.0.38
+sqlalchemy>=2.0.17,<3.0.0
 azure-storage-blob==12.16.0
-azure-data-tables==12.6.0
+azure-data-tables>=12.4.2,<13.0.0
 azure-core==1.32.0
-redis==4.6.0
+redis>=4.5.5,<5.0.0
 
 # Caching and rate limiting
-fastapi-cache2[redis]==0.2.2
-fastapi-limiter==0.1.6
+fastapi-cache2>=0.2.1,<0.3.0
+fastapi-limiter>=0.1.5,<0.2.0
 
 # Security
 python-jose[cryptography]==3.3.0
@@ -24,7 +24,7 @@ httpx==0.25.1
 
 # Monitoring
 opencensus>=0.7.0,<1.0.0
-opencensus-ext-azure==1.0.1
+opencensus-ext-azure>=1.1.9,<2.0.0
 
 # Testing
 pytest==7.4.3
@@ -32,4 +32,4 @@ pytest-mock==3.14.0
 pytest-asyncio==0.21.0
 pytest-cov==4.1.0
 
-azure-identity>=1.10.0
+azure-identity>=1.13.0,<2.0.0
