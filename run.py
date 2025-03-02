@@ -38,7 +38,7 @@ def start_server(dev_mode=False):
 def run_tests(coverage=False):
     """Run the test suite"""
     print("Running tests...")
-    cmd = ["pytest"]
+    cmd = ["python", "-m", "pytest"]
     
     if coverage:
         cmd.extend(["--cov=src", "--cov-report=term", "--cov-report=html:coverage"])
@@ -48,7 +48,7 @@ def run_tests(coverage=False):
 def run_migration(remove_originals=False, archive_path="./archive"):
     """Run the migration script"""
     print("Running migration script...")
-    cmd = ["python", "-m", "src.migrate"]
+    cmd = ["python", "scripts/migrate.py"]
     
     if remove_originals:
         cmd.append("--remove-originals")
@@ -59,10 +59,14 @@ def run_migration(remove_originals=False, archive_path="./archive"):
 
 def validate_config():
     """Validate the current configuration"""
-    from src.config.settings import verify_required_settings, settings
-    print(f"Validating configuration for environment: {settings.ENVIRONMENT}")
-    verify_required_settings()
-    print("Configuration validation complete.")
+    from src.config.settings import settings
+    print("Validating configuration...")
+    try:
+        settings.verify_required_settings()
+        print("Configuration is valid.")
+    except Exception as e:
+        print(f"Configuration error: {str(e)}")
+        sys.exit(1)
 
 def create_tables():
     """Initialize database tables"""

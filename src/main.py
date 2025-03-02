@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     
     # Initialize tables
-    await init_tables()
+    init_tables()
     
     # Initialize Redis
     await init_redis()
