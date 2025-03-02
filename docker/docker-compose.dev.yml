@@ -3,15 +3,15 @@ version: '3.8'
 services:
   fastapi_backend:
     build: 
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: stars_backend_dev
     ports:
       - "8080:8080"
     command: uvicorn src.database_service:app --host 0.0.0.0 --port 8080 --reload
     env_file:
-      - .env
-      - .env.docker
+      - ../.env
+      - ../config/.env.docker
     environment:
       - ENVIRONMENT=development
       - FASTAPI_RELOAD=true

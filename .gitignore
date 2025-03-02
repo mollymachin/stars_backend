@@ -6,15 +6,13 @@ __pycache__/
 .coverage
 .python-version
 
-# Environment files - keep only example
-.env
-.env.*
-!.env.example
-!.env.development
-.env.docker
-.env.prod
-.env.dev
-env_backup/
+# Environment files - only exclude root ones, config directory has own rules
+/.env
+/.env.*
+
+# Keep needed files in config directory
+!config/.env.example
+!config/.env.development
 
 # Archive folders with sensitive data
 archive/
@@ -22,14 +20,18 @@ archive/
 **/deploy_configs/
 **/docker_files/
 **/env_files/
+**/config_files/
+
+# New structure guide
+NEW_STRUCTURE_GUIDE.md
 
 # Local database
 stars.db
 *.sqlite3
 
-# Local scripts
-cleanup.sh
-clean_up.sh
+# Local scripts - only ignore specific ones
+scripts/cleanup.sh
+scripts/clean_up.sh
 
 # Virtual environment
 venv/
@@ -82,3 +84,5 @@ temp/
 
 # Debug/development files
 src/api/debug.py
+
+# Previous symlinks exceptions no longer needed as they've been moved to their respective directories

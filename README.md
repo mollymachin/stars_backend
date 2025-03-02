@@ -1,6 +1,6 @@
 # Star Map Backend Service
 
-A microservice for managing objects in a star map application. This service provides APIs for managing stars, users, and user-star relationships, with real-time event streaming.
+A microservice for managing star objects in a star map application. This service provides APIs for managing stars, users, and user-star relationships, with real-time event streaming.
 
 ## Architecture
 
@@ -45,15 +45,67 @@ A microservice for managing objects in a star map application. This service prov
 │   │   └── user.py         # User model
 │   ├── utils/              # Utility functions
 │   ├── main.py             # FastAPI application setup
-│   ├── run.py              # Application entry point
-│   └── tests/              # Test directory
-├── .env.development        # Development environment variables
-├── .env.example            # Example environment file
-├── docker-compose.yml      # Docker Compose configuration
-├── Dockerfile              # Docker build file
-├── migrate.py              # Migration utility from old structure
-└── requirements.txt        # Python dependencies
+│   └── run.py              # Application entry point
+├── tests/                  # Test directory
+│   ├── api/                # API tests
+│   ├── db/                 # Database tests
+│   ├── models/             # Model tests
+│   ├── util/               # Utility tests
+│   └── conftest.py         # Test fixtures and configuration
+├── scripts/                # Utility scripts
+│   ├── migrate.py          # Migration utility
+│   ├── cleanup.sh          # Cleanup script
+│   └── setup_dev.sh        # Development setup script
+├── config/                 # Configuration files
+│   ├── .env.example        # Example environment file
+│   ├── .env.development    # Development environment variables
+│   └── pytest.ini          # pytest configuration
+├── docker/                 # Docker-related files
+│   ├── Dockerfile          # Main Dockerfile
+│   ├── docker-compose.yml  # Main Docker Compose configuration
+│   ├── docker-compose.dev.yml # Development Docker Compose
+│   ├── docker-compose.prod.yml # Production Docker Compose
+│   └── nginx/              # Nginx configuration
+├── docs/                   # Documentation
+│   ├── AZURE_DEPLOYMENT.md # Azure deployment documentation
+│   └── api/                # API documentation
+├── .github/                # GitHub workflows and actions
+├── .vscode/                # VS Code configuration (optional)
+├── probes.yaml             # Container health check configuration for Azure
+└── run.py                  # Application entry point (root level for convenience)
 ```
+
+## Project Reorganization Note
+
+The project has been fully reorganized with a cleaner directory structure. All configuration files and Docker-related files are now in their respective directories:
+
+### Configuration Files
+- Environment files (`.env.example`, `.env.development`) are now in the `config/` directory
+- Test configuration (`pytest.ini`) is now in the `config/` directory
+
+### Docker Files
+- All Docker-related files are now in the `docker/` directory:
+  - `docker/Dockerfile`
+  - `docker/docker-compose.yml`
+  - `docker/docker-compose.dev.yml`
+  - `docker/docker-compose.prod.yml`
+
+### Running with New Structure
+- Use `python run.py start` to start the application (unchanged)
+- Use `python -m pytest -c config/pytest.ini` to run tests
+- Use `docker compose -f docker/docker-compose.yml up` to run with Docker
+- Use `docker compose -f docker/docker-compose.dev.yml up` for development
+
+### CI/CD
+- CI/CD workflows have been updated to use the new file locations
+
+All symlinks that previously provided backward compatibility have been removed to fully commit to the new, cleaner organization structure.
+
+### Files Remaining in Root Directory
+A few essential files remain in the root directory for specific purposes:
+- `run.py` - Main entry point for running the application
+- `requirements.txt` - Python dependencies
+- `probes.yaml` - Container health check configuration for Azure Container Apps
 
 ## Local Development
 
@@ -73,13 +125,13 @@ A microservice for managing objects in a star map application. This service prov
 
 2. Set up your environment variables
    ```bash
-   cp .env.example .env.development
-   # Edit .env.development with your credentials
+   cp config/.env.example config/.env.development
+   # Edit config/.env.development with your credentials
    ```
 
 3. Start the application with Docker Compose
    ```bash
-   docker compose up
+   docker compose -f docker/docker-compose.yml up
    ```
 
 4. Access the API at http://localhost:8080
@@ -99,9 +151,9 @@ python run.py dev
 The application uses a comprehensive settings management system based on Pydantic:
 
 1. **Configuration Files**:
-   - `.env.example` - Template with all available settings
-   - `.env.development` - Your local development settings
-   - `.env.{environment}` - Environment-specific settings (development, staging, production, test)
+   - `config/.env.example` - Template with all available settings
+   - `config/.env.development` - Your local development settings
+   - `config/.env.{environment}` - Environment-specific settings (development, staging, production, test)
 
 2. **Environment-Specific Settings**:
    The system automatically applies appropriate defaults based on your environment:
@@ -116,7 +168,7 @@ The application uses a comprehensive settings management system based on Pydanti
 pip install -r requirements.txt
 
 # Run tests
-pytest
+pytest -c config/pytest.ini
 ```
 
 ## Deployment
@@ -132,7 +184,7 @@ The application is deployed to Azure Container Apps using GitHub Actions.
 
 ```bash
 # Build and push the Docker image
-docker buildx build --platform linux/amd64 -t ghcr.io/<your-username>/astro-app-db:latest --push .
+docker buildx build -f docker/Dockerfile --platform linux/amd64 -t ghcr.io/<your-username>/astro-app-db:latest --push .
 
 # Update the Azure Container App
 az containerapp update \
