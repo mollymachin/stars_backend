@@ -19,8 +19,7 @@ class LoggingSettings(BaseSettings):
         description="Log format string"
     )
     
-    class Config:
-        env_prefix = "LOG_"
+    model_config = SettingsConfigDict(env_prefix="LOG_")
 
 class AzureStorageSettings(BaseSettings):
     CONNECTION_STRING: Optional[str] = Field(
@@ -45,8 +44,7 @@ class AzureStorageSettings(BaseSettings):
             raise ValueError("AZURE_STORAGE_ACCOUNT_URL must be provided when USE_MANAGED_IDENTITY is enabled")
         return v
         
-    class Config:
-        env_prefix = "AZURE_STORAGE_"
+    model_config = SettingsConfigDict(env_prefix="AZURE_STORAGE_")
 
 class RedisSettings(BaseSettings):
     # Make HOST optional with a default empty value for development
@@ -62,8 +60,7 @@ class RedisSettings(BaseSettings):
     POPULARITY_THRESHOLD: int = Field(50, description="Threshold for considering an item popular")
     POPULARITY_WINDOW: int = Field(3600, description="Time window for popularity calculation in seconds")
     
-    class Config:
-        env_prefix = "REDIS_"
+    model_config = SettingsConfigDict(env_prefix="REDIS_")
 
 class APISettings(BaseSettings):
     CORS_ORIGINS: List[str] = Field(
@@ -80,8 +77,7 @@ class APISettings(BaseSettings):
             raise ValueError("Wildcard CORS origin '*' is not allowed in production")
         return v
     
-    class Config:
-        env_prefix = "API_"
+    model_config = SettingsConfigDict(env_prefix="API_")
 
 class AppSettings(BaseSettings):
     ENVIRONMENT: str = Field("development", description="Application environment")

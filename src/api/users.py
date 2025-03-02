@@ -26,7 +26,7 @@ async def create_user(user: User):
     except Exception as e:
         logger.warning(f"Failed to publish event for new user: {str(e)}")
     
-    return {"user_id": user_entity["RowKey"], **user.dict()}
+    return {"user_id": user_entity["RowKey"], **user.model_dump()}
 
 @router.get("/")
 async def get_users():
