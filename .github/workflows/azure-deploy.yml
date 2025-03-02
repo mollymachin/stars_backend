@@ -54,21 +54,41 @@ jobs:
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          # Get the latest image tag we just pushed
-          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ' | awk '{print $1}')
+          # Get the first image tag (simplified approach)
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          echo "Using image: $IMAGE_TAG"
           
           # Create resource group if it doesn't exist
+          echo "Checking resource group..."
           az group show --name ${{ secrets.AZURE_RESOURCE_GROUP }} || \
             az group create --name ${{ secrets.AZURE_RESOURCE_GROUP }} --location ${{ secrets.AZURE_LOCATION }}
           
           # Create container app environment if it doesn't exist
+          echo "Checking container app environment..."
           az containerapp env show --name ${{ secrets.AZURE_CONTAINER_ENV }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || \
             az containerapp env create --name ${{ secrets.AZURE_CONTAINER_ENV }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --location ${{ secrets.AZURE_LOCATION }}
           
           # Check if container app exists
-          CONTAINER_APP_EXISTS=$(az containerapp show --name ${{ secrets.AZURE_CONTAINER_APP }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query name -o tsv 2>/dev/null || echo "")
-          
-          if [ -z "$CONTAINER_APP_EXISTS" ]; then
+          echo "Checking if container app exists..."
+          if az containerapp show --name ${{ secrets.AZURE_CONTAINER_APP }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} > /dev/null 2>&1; then
+            echo "Container app exists, updating..."
+            # Update container app
+            az containerapp update \
+              --name ${{ secrets.AZURE_CONTAINER_APP }} \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --image $IMAGE_TAG \
+              --set-env-vars \
+                "ENVIRONMENT=production" \
+                "PORT=8080" \
+                "AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                "REDIS_HOST=${{ secrets.REDIS_HOST }}" \
+                "REDIS_PORT=${{ secrets.REDIS_PORT }}" \
+                "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" \
+                "REDIS_SSL=true" \
+                "API_CORS_ORIGINS=${{ secrets.API_CORS_ORIGINS }}" \
+                "ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
+          else
+            echo "Container app does not exist, creating..."
             # Create container app
             az containerapp create \
               --name ${{ secrets.AZURE_CONTAINER_APP }} \
@@ -83,22 +103,6 @@ jobs:
               --cpu 0.5 \
               --memory 1.0Gi \
               --env-vars \
-                "ENVIRONMENT=production" \
-                "PORT=8080" \
-                "AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-                "REDIS_HOST=${{ secrets.REDIS_HOST }}" \
-                "REDIS_PORT=${{ secrets.REDIS_PORT }}" \
-                "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" \
-                "REDIS_SSL=true" \
-                "API_CORS_ORIGINS=${{ secrets.API_CORS_ORIGINS }}" \
-                "ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
-          else
-            # Update container app
-            az containerapp update \
-              --name ${{ secrets.AZURE_CONTAINER_APP }} \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --image $IMAGE_TAG \
-              --set-env-vars \
                 "ENVIRONMENT=production" \
                 "PORT=8080" \
                 "AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
