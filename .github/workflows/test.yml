@@ -17,5 +17,5 @@ jobs:
         pip install -r requirements.txt
     - name: Run tests
       run: |
-        # Use config/pytest.ini via the symbolic link
-        python -m pytest
+        # Use the pytest.ini from config directory
+        python -m pytest -c config/pytest.ini

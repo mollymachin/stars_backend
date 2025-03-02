@@ -28,7 +28,6 @@ RUN mkdir -p /app/src /app/logs /app/config
 # Copy application code
 COPY src/ /app/src/
 COPY config/.env.example /app/config/.env.example
-COPY .env.example .
 
 # Create a non-root user and switch to it
 RUN adduser --disabled-password --gecos "" appuser
