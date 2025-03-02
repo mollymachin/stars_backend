@@ -1,3 +1,4 @@
+import contextlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -47,39 +48,41 @@ if settings.ENVIRONMENT != "production":
     app.include_router(debug_router, prefix="/debug", tags=["debug"])
     logger.info("Debug endpoints enabled in non-production environment")
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize components on application startup"""
-    logger.info(f"Starting Star Map API in {settings.ENVIRONMENT} environment")
+# Modern lifespan approach instead of on_event
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup actions
+    logger.info(f"Starting up {settings.PROJECT_NAME} v{settings.VERSION}")
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
     
-    # Initialize database tables
-    try:
-        init_tables()
-        logger.info("Successfully initialized Azure Table Storage")
-    except Exception as e:
-        logger.error(f"Failed to initialize Azure Table Storage: {str(e)}")
+    # Initialize tables
+    await init_tables()
     
     # Initialize Redis
-    try:
-        await init_redis()
-        logger.info("Successfully initialized Redis")
-    except Exception as e:
-        logger.warning(f"Redis initialization failed: {str(e)}. Some features may be limited.")
+    await init_redis()
+    
+    logger.info("Initialization complete")
+    
+    yield
+    
+    # Shutdown actions
+    logger.info("Shutting down application...")
+    
+    # Perform cleanup here
+    logger.info("Cleanup complete")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up resources on application shutdown"""
-    logger.info("Shutting down Star Map API")
-    # Add any cleanup code here if needed
+# Apply the lifespan handler
+app.router.lifespan_context = lifespan
 
-@app.get("/", tags=["root"])
+# Root endpoint
+@app.get("/")
 async def root():
-    """Root endpoint"""
+    """Root endpoint with version info"""
     return {
-        "message": "Welcome to the Star Map API",
+        "name": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
-        "docs_url": "/docs"
+        "message": "Welcome to the Star Map API"
     }
 
 if __name__ == "__main__":
