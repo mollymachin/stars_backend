@@ -4,8 +4,8 @@ services:
   fastapi_backend:
     image: ${DOCKER_REGISTRY}/stars_backend:${IMAGE_TAG:-latest}
     build: 
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         - ENVIRONMENT=production
     container_name: stars_backend_prod
@@ -13,8 +13,8 @@ services:
       - "8080"
     command: uvicorn src.database_service:app --host 0.0.0.0 --port 8080 --workers 4 --no-access-log
     env_file:
-      - .env
-      - .env.docker
+      - ../.env
+      - ../config/.env.docker
     environment:
       - ENVIRONMENT=production
       - FASTAPI_RELOAD=false
