@@ -54,32 +54,49 @@ jobs:
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          # Get the latest image tag we just pushed
-          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ' | awk '{print $1}')
+          # Get the first image tag
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          echo "Using image: $IMAGE_TAG"
           
-          # Create resource group if it doesn't exist
-          az group show --name ${{ secrets.AZURE_RESOURCE_GROUP }} || \
-            az group create --name ${{ secrets.AZURE_RESOURCE_GROUP }} --location ${{ secrets.AZURE_LOCATION }}
+          # Variables for easier reference
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          LOCATION="${{ secrets.AZURE_LOCATION }}"
+          ENV_NAME="${{ secrets.AZURE_CONTAINER_ENV }}"
+          APP_NAME="${{ secrets.AZURE_CONTAINER_APP }}"
           
-          # Create container app environment if it doesn't exist
-          az containerapp env show --name ${{ secrets.AZURE_CONTAINER_ENV }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || \
-            az containerapp env create --name ${{ secrets.AZURE_CONTAINER_ENV }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --location ${{ secrets.AZURE_LOCATION }}
+          # Check if resource group exists
+          echo "Checking resource group '$RG'..."
+          if az group exists --name "$RG" | grep -q "true"; then
+            echo "Resource group exists"
+          else
+            echo "Creating resource group '$RG' in '$LOCATION'..."
+            az group create --name "$RG" --location "$LOCATION"
+          fi
+          
+          # Check if container app environment exists
+          echo "Checking container app environment..."
+          ENV_EXISTS=$(az containerapp env list --resource-group "$RG" --query "[?name=='$ENV_NAME'].name" -o tsv)
+          if [ -z "$ENV_EXISTS" ]; then
+            echo "Creating container app environment '$ENV_NAME'..."
+            az containerapp env create --name "$ENV_NAME" --resource-group "$RG" --location "$LOCATION"
+          else
+            echo "Container app environment exists"
+          fi
           
           # Check if container app exists
-          CONTAINER_APP_EXISTS=$(az containerapp show --name ${{ secrets.AZURE_CONTAINER_APP }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query name -o tsv 2>/dev/null || echo "")
-          
-          if [ -z "$CONTAINER_APP_EXISTS" ]; then
-            # Create container app
+          echo "Checking if container app exists..."
+          APP_EXISTS=$(az containerapp list --resource-group "$RG" --query "[?name=='$APP_NAME'].name" -o tsv)
+          if [ -z "$APP_EXISTS" ]; then
+            echo "Creating container app '$APP_NAME'..."
             az containerapp create \
-              --name ${{ secrets.AZURE_CONTAINER_APP }} \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --environment ${{ secrets.AZURE_CONTAINER_ENV }} \
-              --image $IMAGE_TAG \
+              --name "$APP_NAME" \
+              --resource-group "$RG" \
+              --environment "$ENV_NAME" \
+              --image "$IMAGE_TAG" \
               --target-port 8080 \
               --ingress external \
               --min-replicas 1 \
               --max-replicas 3 \
-              --enable-dapr false \
               --cpu 0.5 \
               --memory 1.0Gi \
               --env-vars \
@@ -93,11 +110,11 @@ jobs:
                 "API_CORS_ORIGINS=${{ secrets.API_CORS_ORIGINS }}" \
                 "ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }}"
           else
-            # Update container app
+            echo "Updating container app '$APP_NAME'..."
             az containerapp update \
-              --name ${{ secrets.AZURE_CONTAINER_APP }} \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --image $IMAGE_TAG \
+              --name "$APP_NAME" \
+              --resource-group "$RG" \
+              --image "$IMAGE_TAG" \
               --set-env-vars \
                 "ENVIRONMENT=production" \
                 "PORT=8080" \
@@ -111,4 +128,5 @@ jobs:
           fi
           
           # Output the container app URL
-          echo "Container App URL: $(az containerapp show --name ${{ secrets.AZURE_CONTAINER_APP }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)" 
+          APP_URL=$(az containerapp show --name "$APP_NAME" --resource-group "$RG" --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "Container App URL: $APP_URL" 
