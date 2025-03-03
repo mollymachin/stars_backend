@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: Development
     
     steps:
     - name: Checkout code
@@ -129,4 +130,4 @@ jobs:
           
           # Output the container app URL
           APP_URL=$(az containerapp show --name "$APP_NAME" --resource-group "$RG" --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "Container App URL: $APP_URL" 
+          echo "Container App URL: $APP_URL"
