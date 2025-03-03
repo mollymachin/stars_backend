@@ -1,0 +1,86 @@
+# Version control
+.git/
+.gitignore
+.github/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.python-version
+
+# Virtual environments
+venv/
+.venv/
+env/
+virtualenv/
+
+# Local environment files
+/.env
+/.env.*
+
+# Only exclude root level files, keep config directory ones
+!config/.env.example
+
+# Archive and backup files
+archive/
+**/database_versions/
+**/deploy_configs/
+**/docker_files/
+**/env_files/
+**/config_files/
+
+# New structure guide
+NEW_STRUCTURE_GUIDE.md
+
+# Database
+stars.db
+*.sqlite3
+
+# Cleaning scripts
+cleanup.sh
+clean_up.sh
+
+# Cache folders
+.cache/
+cache/
+CACHEDIR.TAG
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker-specific files (avoid recursive copies)
+# We want to keep docker/ directory but exclude specific files
+docker/**/Dockerfile*
+!docker/Dockerfile
+docker/**/.dockerignore
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs
+*log.txt
+*.log
+logs/
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+*.bak
+
+# Azure local storage
+azurite_data/
+
+# Important files to KEEP (not ignored)
+# These are explicitly listed to make it clear they should be included
+!probes.yaml
+!requirements.txt
+!run.py

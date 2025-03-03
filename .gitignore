@@ -1,9 +1,88 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.python-version
+
+# Environment files - only exclude root ones, config directory has own rules
+/.env
+/.env.*
+
+# Keep needed files in config directory
+!config/.env.example
+!config/.env.development
+
+# Archive folders with sensitive data
+archive/
+**/database_versions/
+**/deploy_configs/
+**/docker_files/
+**/env_files/
+**/config_files/
+
+# New structure guide
+NEW_STRUCTURE_GUIDE.md
+
+# Local database
+stars.db
+*.sqlite3
+
+# Local scripts - only ignore specific ones
+scripts/cleanup.sh
+scripts/clean_up.sh
+
+# Virtual environment
+venv/
+.venv/
+
+# Cache folders
+.cache/
+cache/
+CACHEDIR.TAG
+
+# macOS specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build and distribution
+dist/
+build/
+*.egg-info/
+
+# Logs
 *log.txt
+*.log
+logs/
 
-__pycache__
+# Docker volumes
+*_data/
+*_data_*/
+redis_data*/
 
-stars.db
-*.db
+# Azure local storage
+azurite_data/
 
-venv
-stars.db
+# Temporary files
+*.tmp
+tmp/
+temp/
+*.bak
+
+# SSL certificates (often used with nginx)
+*.pem
+*.key
+*.crt
+
+# Debug/development files
+src/api/debug.py
+
+# Previous symlinks exceptions no longer needed as they've been moved to their respective directories
